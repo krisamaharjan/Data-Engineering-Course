@@ -67,13 +67,13 @@ def _drop_unmatched(df: pd.DataFrame, key_col: str, label: str) -> pd.DataFrame:
 
 
 FACT_COLUMNS = [
-    "source_trip_id", "date_key", "driver_key", "passenger_key",
+    "source_trip_id", "date_key", "driver_key", "vehicle_key", "passenger_key",
     "pickup_location_key", "dropoff_location_key",
     "payment_method_key", "promo_code_key",
     "base_fare", "tip_amount", "discount_amount", "fare_amount",
     "distance_km", "status", "duration_minutes",
     "driver_rating", "passenger_rating",
-    "surge_multiplier", "requested_at",
+    "surge_multiplier", "requested_at", "time_key",
 ]
 
 
@@ -87,6 +87,9 @@ def transform_trips(trips_df: pd.DataFrame, lookups: dict) -> pd.DataFrame:
     initial_count = len(trips_df)
     df = trips_df.copy()
 
+    df["payment_method_id"] = pd.to_numeric(df["payment_method_id"], errors="coerce").astype("Int64")
+    df["promo_code_id"] = pd.to_numeric(df["promo_code_id"], errors="coerce").astype("Int64")
+
     df["date_key"] = df["requested_at"].dt.strftime("%Y%m%d").astype(int)
     df = df[df["date_key"].isin(lookups["date"]["date_key"])]
     if len(df) < initial_count:
@@ -97,6 +100,19 @@ def transform_trips(trips_df: pd.DataFrame, lookups: dict) -> pd.DataFrame:
 
     df = df.merge(lookups["passenger"], on="passenger_id", how="left")
     df = _drop_unmatched(df, "passenger_key", "passenger_key (dim_passenger)")
+
+    df = df.merge(lookups["vehicle"], on="vehicle_id", how="left")
+    df = _drop_unmatched(df, "vehicle_key", "vehicle_key (dim_vehicle)")
+
+    df["hour"] = df["requested_at"].dt.hour
+    df["minute_bucket"] = (df["requested_at"].dt.minute // 15) * 15
+    df = df.merge(
+        lookups["time"][["time_key", "hour", "minute_bucket"]],
+        on=["hour", "minute_bucket"],
+        how="left",
+    )
+    df = _drop_unmatched(df, "time_key", "time_key (dim_time)")
+
 
     pickup_lookup = lookups["location"].rename(
         columns={"location_id": "pickup_location_id", "location_key": "pickup_location_key"}
@@ -125,7 +141,7 @@ def transform_trips(trips_df: pd.DataFrame, lookups: dict) -> pd.DataFrame:
         logger.warning(f"{bad_promo.sum()} trip(s) with unknown promo_code_id — skipped")
     df = df[~bad_promo]
 
-    for col in ("driver_key", "passenger_key", "pickup_location_key",
+    for col in ("driver_key", "vehicle_key", "passenger_key", "pickup_location_key",
                 "dropoff_location_key", "payment_method_key", "promo_code_key"):
         df[col] = df[col].astype("Int64")
 
