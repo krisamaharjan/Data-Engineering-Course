@@ -71,6 +71,13 @@ def main():
     """
     Extract all dimension data from the source DB and load them into the target DB.
     """
+    logger.info(f"Running mode: {mode}")
+    logger.info(
+        f"Connecting to source: "
+        f"{SOURCE_DB_CONFIG['host']}:{SOURCE_DB_CONFIG['port']}/"
+        f"{SOURCE_DB_CONFIG['dbname']}"
+    )
+
     src_conn = psycopg2.connect(**SOURCE_DB_CONFIG)
     dst_conn = psycopg2.connect(**DEST_DB_CONFIG)
     try:
